@@ -14,6 +14,32 @@ import "strconv"
 // and reply for an RPC.
 //
 
+type MapJob struct {
+	FileName string
+	MapJobID int
+	ReduceN  int
+}
+
+type ReduceJob struct {
+	IntermediateFiles []string
+	ReduceJobID       int
+}
+
+type RequestJobReply struct {
+	Done      bool
+	MapJob    *MapJob
+	ReduceJob *ReduceJob
+}
+
+type ReportMapJobArgs struct {
+	Filename          string
+	IntermediateFiles []string
+}
+
+type ReportReduceJobArgs struct {
+	Filename          string
+	IntermediateFiles []string
+}
 type ExampleArgs struct {
 	X int
 }
@@ -23,7 +49,6 @@ type ExampleReply struct {
 }
 
 // Add your RPC definitions here.
-
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
