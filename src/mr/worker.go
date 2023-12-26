@@ -26,7 +26,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 	shouldExit := false
 	for !shouldExit {
-		args := RequestTaskArgs{}
 		reply := RequestTaskReply{}
 		call("Coordinator.RequestTask", &args, &reply)
 		switch reply.TaskType {
