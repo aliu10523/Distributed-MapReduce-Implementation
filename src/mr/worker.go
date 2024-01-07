@@ -1,6 +1,12 @@
 package mr
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"sort"
+)
 import "log"
 import "net/rpc"
 import "hash/fnv"
@@ -10,6 +16,13 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+
+// for sorting by key.
+type ByKey []KeyValue
+
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
@@ -26,42 +39,150 @@ func Worker(mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 	shouldExit := false
 	for !shouldExit {
-		reply := RequestTaskReply{}
-		call("Coordinator.RequestTask", &args, &reply)
-		switch reply.TaskType {
-		case MapTask:
-			doMapTask(reply.TaskID, reply.InputFiles, reply.NReduce, mapf)
-		case ReduceTask:
-			doReduceTask(reply.TaskID, reply.InputFiles, reducef)
-		case Exit:
+		reply := RequestTask()
+
+		if reply.Done {
 			shouldExit = true
+			// fmt.Println("All Jobs Completed")
+			continue
 		}
 
-	}
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
+		if reply.MapJob != nil {
+			handleMapTask(reply.MapJob, mapf)
+		}
 
+		if reply.ReduceJob != nil {
+			handleReduceTask(reply.ReduceJob, reducef)
+		}
+		// time.Sleep(1 * time.Second)
+	}
+}
+
+func handleMapTask(job *MapJob, mapf func(string, string) []KeyValue) {
+	fileName := job.FileName
+	reduceCount := job.ReduceN
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalf("cannot open %v", fileName)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", fileName)
+	}
+	file.Close()
+	kva := mapf(fileName, string(content))
+	sort.Sort(ByKey(kva))
+	partitionedKva := make([][]KeyValue, reduceCount)
+	for _, kv := range kva {
+		reduceIndex := ihash(kv.Key) % reduceCount
+		partitionedKva[reduceIndex] = append(partitionedKva[reduceIndex], kv)
+	}
+
+	intermediateFiles := make([]string, reduceCount)
+	for i := 0; i < reduceCount; i++ {
+		intermediateFileName := fmt.Sprintf("mr-%d-%d", job.MapJobID, i) // generate file name, including the mapjob id and reduce identifier
+		intermediateFiles[i] = intermediateFileName
+		intermediateFile, err := os.Create(intermediateFileName)
+
+		if err != nil {
+			log.Fatalf("cannot create %v", intermediateFileName)
+		}
+		data, err := json.Marshal(partitionedKva[i])
+		if err != nil {
+			fmt.Println("Error marshalling data: ", err)
+		}
+		intermediateFile.Write(data)
+		intermediateFile.Close()
+	}
+
+	ReportMapTask(ReportMapTaskArgs{Filename: fileName, IntermediateFiles: intermediateFiles, ProcessID: os.Getpid()})
+
+}
+
+func handleReduceTask(job *ReduceJob, reducef func(string, []string) string) {
+	files := job.IntermediateFiles
+	intermediate := []KeyValue{}
+
+	for _, fileName := range files {
+		data, err := ioutil.ReadFile(fileName)
+		if err != nil {
+			fmt.Println("Read error: ", err.Error())
+		}
+		var input []KeyValue
+		err = json.Unmarshal(data, &input) // converts json to Go structs and places the result in the value pointed to by &input
+		if err != nil {
+			fmt.Println("Unmarshal error: ", err.Error())
+		}
+
+		intermediate = append(intermediate, input...)
+	}
+
+	sort.Sort(ByKey(intermediate))
+
+	// generating output file
+	outputName := fmt.Sprintf("mr-out-%v", job.ReduceJobID)
+	tempFile, err := ioutil.TempFile(".", outputName)
+	if err != nil {
+		fmt.Println("Error creating temp file")
+	}
+
+	i := 0
+	// taken from mrsequential.go
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+
+		output := reducef(intermediate[i].Key, values)
+
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(tempFile, "%v %v\n", intermediate[i].Key, output)
+
+		i = j
+	}
+
+	os.Rename(tempFile.Name(), outputName)
+	ReportReduceTask(ReportReduceJobArgs{ProcessID: os.Getpid(), ReduceNumber: job.ReduceJobID})
+}
+
+func ReportMapTask(args ReportMapTaskArgs) ReportMapTaskReply {
+	reply := ReportMapTaskReply{}
+	call("Coordinator.ReportMapTask", &args, &reply)
+	return reply
+}
+
+func ReportReduceTask(args ReportReduceJobArgs) ReportReduceTaskReply {
+	reply := ReportReduceTaskReply{}
+	call("Coordinator.ReportReduceTask", &args, &reply)
+	return reply
 }
 
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-func CallExample() {
+func RequestTask() RequestTaskReply {
 
 	// declare an argument structure.
-	args := ExampleArgs{}
+	args := RequestTaskArgs{}
 
 	// fill in the argument(s).
-	args.X = 99
+	args.ProcessID = os.Getpid()
 
 	// declare a reply structure.
-	reply := ExampleReply{}
+	reply := RequestTaskReply{}
 
 	// send the RPC request, wait for the reply.
-	call("Coordinator.Example", &args, &reply)
+	call("Coordinator.RequestTask", &args, &reply)
 
 	// reply.Y should be 100.
-	fmt.Printf("reply.Y %v\n", reply.Y)
+	// fmt.Printf("reply.Y %v\n", reply.Y)
+	return reply
 }
 
 // send an RPC request to the coordinator, wait for the response.

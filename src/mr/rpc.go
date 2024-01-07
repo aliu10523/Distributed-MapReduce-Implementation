@@ -6,7 +6,9 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
+import (
+	"os"
+)
 import "strconv"
 
 //
@@ -36,16 +38,30 @@ type ReportMapJobArgs struct {
 	IntermediateFiles []string
 }
 
-type ReportReduceJobArgs struct {
+type ReportMapTaskArgs struct {
 	Filename          string
 	IntermediateFiles []string
-}
-type ExampleArgs struct {
-	X int
+	ProcessID         int
 }
 
-type ExampleReply struct {
-	Y int
+type ReportReduceJobArgs struct {
+	ProcessID    int
+	ReduceNumber int
+}
+type ReportMapTaskReply struct {
+}
+
+type RequestTaskArgs struct {
+	ProcessID int
+}
+
+type RequestTaskReply struct {
+	MapJob    *MapJob
+	ReduceJob *ReduceJob
+	Done      bool
+}
+
+type ReportReduceTaskReply struct {
 }
 
 // Add your RPC definitions here.

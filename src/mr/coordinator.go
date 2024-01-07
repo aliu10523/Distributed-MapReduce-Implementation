@@ -80,7 +80,7 @@ func (c *Coordinator) AllMapJobDone() bool {
 	return done
 }
 
-func (c *Coordinator) ReportMapTask(args *ReportMapTaskArgs, reply *RequestJobReply) error {
+func (c *Coordinator) ReportMapTask(args *ReportMapTaskArgs, reply *ReportMapTaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mapStatus[args.Filename] = JobStatus{StartTime: -1, Status: "completed"}
@@ -92,7 +92,7 @@ func (c *Coordinator) ReportMapTask(args *ReportMapTaskArgs, reply *RequestJobRe
 	return nil
 }
 
-func (c *Coordinator) ReportReduceTask(args ReportReduceJobArgs, replyReduce *RequestJobReply) error {
+func (c *Coordinator) ReportReduceTask(args ReportReduceJobArgs, reply *ReportReduceTaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.reduceStatus[args.ReduceNumber] = JobStatus{StartTime: -1, Status: "completed"}
@@ -203,7 +203,7 @@ func (c *Coordinator) Done() bool {
 
 	for _, v := range c.reduceStatus {
 		if v.Status != "completed" {
-			return false
+			ret = false
 		}
 	}
 	return ret
