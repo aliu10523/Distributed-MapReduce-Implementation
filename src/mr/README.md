@@ -5,4 +5,4 @@ The project involved implementing a distributed MapReduce framework, starting wi
 
 **Concepts:** MapReduce, Concurrency, Scalability, RPC, Fault Tolerance, Parallel Processing, Distributed Systems
 
-![Test Results](src/mr/lab1_passed.png)
+![Test Results](lab1_passed.png)
